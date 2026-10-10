@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>報酬配布計算</title>
+<style>
+:root{--bg:#f6f5f1;--card:#fff;--ink:#1f2328;--sub:#6b7280;--line:#e3e1da;--acc:#2f6f5e;--accbg:#e4f1ec;--warn:#b45309;--warnbg:#fdf0dc;--err:#b42318;--errbg:#fde8e6;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#15171a;--card:#1e2125;--ink:#e8e8e6;--sub:#9aa0a8;--line:#31353a;--acc:#6fcfb2;--accbg:#1d3029;--warn:#f0b25e;--warnbg:#3a2d17;--err:#ff8a7e;--errbg:#3d1f1c}}
+:root[data-theme="dark"]{--bg:#15171a;--card:#1e2125;--ink:#e8e8e6;--sub:#9aa0a8;--line:#31353a;--acc:#6fcfb2;--accbg:#1d3029;--warn:#f0b25e;--warnbg:#3a2d17;--err:#ff8a7e;--errbg:#3d1f1c}
+*{box-sizing:border-box}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,"Hiragino Sans","Noto Sans JP",Meiryo,sans-serif;line-height:1.5}
+main{max-width:760px;margin:0 auto;padding:16px 14px 40px}
+h1{font-size:20px;margin:6px 0 14px}
+h2{font-size:14px;margin:0 0 10px;color:var(--sub);font-weight:600;letter-spacing:.03em}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:12px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+label.f{display:block;font-size:12px;color:var(--sub)}
+input[type=number],textarea{width:100%;font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+input[type=number]{font-size:18px;font-weight:600}
+input:focus,textarea:focus{outline:2px solid var(--acc);outline-offset:0}
+.chk{display:flex;gap:10px;align-items:center;margin-top:12px;padding:10px 12px;border-radius:8px;background:var(--accbg);cursor:pointer;font-size:15px}
+.chk input{width:20px;height:20px;accent-color:var(--acc)}
+.chk small{color:var(--sub);margin-left:auto}
+.scroll{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th{font-size:12px;color:var(--sub);font-weight:600;text-align:right;padding:6px 6px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:7px 6px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+td.name,th.name{text-align:left;white-space:normal;word-break:break-all}
+td input[type=number]{width:76px;font-size:15px;padding:5px 8px;text-align:right}
+.rk{font-weight:700}
+.res{font-weight:700;color:var(--acc)}
+.auto{font-size:11px;color:var(--sub);margin-left:4px}
+.sum{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;text-align:center}
+.sum div{background:var(--bg);border-radius:8px;padding:10px 4px}
+.sum b{display:block;font-size:22px}
+.sum span{font-size:11px;color:var(--sub)}
+.msg{border-radius:8px;padding:8px 12px;font-size:13px;margin-top:10px}
+.msg.w{background:var(--warnbg);color:var(--warn)}
+.msg.e{background:var(--errbg);color:var(--err)}
+details summary{cursor:pointer;font-size:14px;font-weight:600;padding:2px 0}
+button{font:inherit;font-size:13px;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:8px;padding:7px 12px;cursor:pointer}
+button.p{background:var(--acc);color:var(--bg);border-color:var(--acc);font-weight:600}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center}
+.note{font-size:12px;color:var(--sub);margin:6px 0 0}
+tr.off td{opacity:.4}
+.tag{font-size:11px;background:var(--warnbg);color:var(--warn);border-radius:4px;padding:1px 5px;margin-left:6px}
+</style>
+</head>
+<body>
+<main>
+<h1>報酬配布計算</h1>
+
+<div class="card">
+  <h2>報酬設定</h2>
+  <div class="grid">
+    <label class="f">配布可能数（合計）<input id="total" type="number" min="0" step="1" inputmode="numeric" value="100"></label>
+    <label class="f">一人当たりの上限（0=制限なし）<input id="cap" type="number" min="0" step="1" inputmode="numeric" value="0"></label>
+  </div>
+  <label class="chk"><input type="checkbox" id="sub"><span>サブ（備考:サブ）にも配る</span><small id="subcnt"></small></label>
+</div>
+
+<div class="card">
+  <h2>階級ごとの配布数（1人あたり）</h2>
+  <div class="scroll"><table id="rankTbl">
+    <thead><tr><th>階級</th><th>対象人数</th><th>指定（空欄=自動）</th><th>実際/人</th><th>小計</th></tr></thead>
+    <tbody></tbody>
+  </table></div>
+  <p class="note">指定した階級を先に確保し、空欄の階級で残りを均等割りします（端数は切り捨て）。</p>
+</div>
+
+<div class="card">
+  <h2>結果</h2>
+  <div class="sum">
+    <div><b id="sUsed">0</b><span>配布合計</span></div>
+    <div><b id="sLeft">0</b><span>余り</span></div>
+    <div><b id="sPeople">0</b><span>配布人数</span></div>
+  </div>
+  <div id="msgs"></div>
+  <div class="row"><button class="p" id="copy">メンバー別にコピー</button><button id="copyTsv">表形式でコピー（シート貼り付け用）</button><span class="note" id="copyMsg"></span></div>
+</div>
+
+<div class="card">
+  <details>
+    <summary>メンバー一覧（個別に配布数を調整・除外）</summary>
+    <p class="note">配布数欄に数字を入れると、そのメンバーだけ固定します（空欄=階級の設定どおり）。固定分は先に確保され、残りが自動の階級に割り振られます。</p>
+    <div class="scroll" style="margin-top:8px"><table id="memTbl">
+      <thead><tr><th>配る</th><th class="name">名前</th><th>階級</th><th>配布数</th></tr></thead>
+      <tbody></tbody>
+    </table></div>
+  </details>
+</div>
+
+<div class="card">
+  <details>
+    <summary>メンバーデータを更新する</summary>
+    <p class="note">このページからスプレッドシートへ直接アクセスできないため、シートの A:C 列（階級・名前・備考）を範囲選択してコピーし、下に貼り付けてください。</p>
+    <textarea id="paste" rows="5" placeholder="階級	名前	備考&#10;R5	カニ	&#10;R4	tsuGu	"></textarea>
+    <div class="row">
+      <button class="p" id="apply">貼り付けた内容で更新</button>
+      <button id="reset">初期データに戻す</button>
+      <span class="note" id="dataMsg"></span>
+    </div>
+    <p class="note" id="dataInfo"></p>
+  </details>
+</div>
+</main>
+
+<script>
+const SNAPSHOT_DATE="2026-10-10";
+const SNAPSHOT=`R5|カニ|
+R4|tsuGu|
+R4|まめた|
+R4|ぐで|
+R4|なむさん|
+R4|やまぴ|
+R4|ZAWA|
+R4|サブカニ|サブ
+R4|TAKU|
+R4|ﾋﾟｷｯ!トンマッチョ!|
+R4|めたま|サブ
+R4|ツーフー|
+R4|kikko|サブ
+R3|ヒロ|
+R3|D31じもまる|
+R3|のリピ|
+R3|toto|
+R3|ミウマパ|
+R3|kikka|
+R3|チャトラン|
+R3|しゅうちゃん|
+R3|みぞみそ|
+R3|yukari|
+R3|ちぃッティ|
+R3|うらちいはち DwD|
+R3|Degrechaff|
+R3|ミルネージ|
+R3|JSB|
+R3|かかかかりきち|
+R3|合体凹凸大臣@おかめ納豆|
+R3|しんゆな|
+R3|ゾジ子|
+R3|あいらだよ！！|
+R3|muuk|
+R3|あもんど|
+R3|雷 晶|
+R3|dododo25|
+R3|monnie|
+R3|ゔぃんらでぃん|
+R3|Scoffs|
+R3|カイちゃん|
+R3|モルニキ|
+R3|wolf|
+R3|桜吹雪|
+R3|パピプペポ|
+R3|きなこまぶし|
+R3|ぴーやん|
+R3|みつくり|
+R3|わらび餅|
+R3|LE、O、N|
+R3|Vell1231|
+R3|さかあがり|
+R3|にゃんまる|
+R3|オロナ民C|
+R3|アンジェラベイビー|
+R3|まこまこ|
+R3|ray|
+R3|exoエク|
+R3|みみみみケランジェロ|
+R3|オミート|
+R3|susan|
+R3|lucky|
+R3|ましろ|
+R3|ひろと23|
+R3|筋子筋子|
+R3|hirobox|
+R3|ナマズヨハンナ|
+R3|蟹武者kaGe|
+R2|ヒロ04|サブ
+R2|しろみけ|サブ
+R2|do25SUB|サブ
+R2|まめた Love のりぴ2|サブ
+R2|牛すじ ODN|
+R2|なむちゃむ|
+R2|アモタ|サブ
+R2|ごぼーまきぴ|サブ
+R2|アリナ民A|サブ
+R1|ta πκ|
+R1|まいか|サブ
+R1|Davis～援軍不要|サブ
+R1|ゆつかな|
+R1|まい平うぇい|
+R1|キャンディ|
+R1|まっいっか援軍不要|
+R1|南部ちゃん|
+R1|みゅー|
+R1|oito0312 DwD|
+R1|MARU|`;
+
+const $=id=>document.getElementById(id);
+const LS={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
+
+let members=[];   // {rank,name,note,sub,key}
+let state={total:100,cap:0,sub:false,spec:{},off:{},ov:{}};
+let dataInfo="初期データ（"+SNAPSHOT_DATE+" 時点）";
+
+function parseLines(lines,sep){
+  const out=[];
+  for(const ln of lines){
+    const p=ln.split(sep);
+    const rank=(p[0]||"").trim(),name=(p[1]||"").trim(),note=(p[2]||"").trim();
+    if(!rank||!name||rank==="階級")continue;
+    out.push({rank,name,note,sub:note.includes("サブ")});
+  }
+  return out;
+}
+function setMembers(list){
+  const seen={};
+  members=list.map(m=>{const b=m.rank+"|"+m.name;seen[b]=(seen[b]||0)+1;return {...m,key:b+"#"+seen[b]}});
+}
+const rankNum=r=>{const n=parseInt(String(r).replace(/\D/g,""),10);return isNaN(n)?-1:n};
+function ranks(){
+  return [...new Set(members.map(m=>m.rank))].sort((a,b)=>rankNum(b)-rankNum(a)||a.localeCompare(b));
+}
+function save(){LS.set("rd_state",JSON.stringify(state))}
+function loadState(){
+  const s=LS.get("rd_state");
+  if(s){try{const o=JSON.parse(s);state={...state,...o,spec:o.spec||{},off:o.off||{},ov:o.ov||{}}}catch(e){}}
+  const d=LS.get("rd_data");
+  if(d){try{const o=JSON.parse(d);setMembers(o.list);dataInfo=o.info;return}catch(e){}}
+  setMembers(parseLines(SNAPSHOT.split("\n"),"|"));
+}
+
+function build(){
+  const rb=$("rankTbl").tBody||$("rankTbl").querySelector("tbody");
+  rb.innerHTML="";
+  for(const r of ranks()){
+    const tr=document.createElement("tr");tr.dataset.rank=r;
+    tr.innerHTML=`<td class="rk"></td><td class="cnt"></td><td><input type="number" min="0" step="1" inputmode="numeric" placeholder="自動"></td><td class="per res"></td><td class="subt"></td>`;
+    tr.children[0].textContent=r;
+    const inp=tr.querySelector("input");
+    if(state.spec[r]!==undefined&&state.spec[r]!=="")inp.value=state.spec[r];
+    inp.addEventListener("input",()=>{state.spec[r]=inp.value;save();calc()});
+    rb.appendChild(tr);
+  }
+  const mb=$("memTbl").querySelector("tbody");
+  mb.innerHTML="";
+  members.forEach(m=>{
+    const tr=document.createElement("tr");tr.dataset.key=m.key;
+    tr.innerHTML=`<td><input type="checkbox" style="width:18px;height:18px;accent-color:var(--acc)"></td><td class="name"></td><td></td><td><input class="mi" type="number" min="0" step="1" inputmode="numeric"></td>`;
+    tr.children[1].textContent=m.name;
+    if(m.sub){const t=document.createElement("span");t.className="tag";t.textContent="サブ";tr.children[1].appendChild(t)}
+    tr.children[2].textContent=m.rank;
+    const cb=tr.querySelector("input");
+    cb.checked=!state.off[m.key];
+    cb.addEventListener("change",()=>{if(cb.checked)delete state.off[m.key];else state.off[m.key]=1;save();calc()});
+    const mi=tr.querySelector(".mi");
+    if(state.ov[m.key]!==undefined&&state.ov[m.key]!=="")mi.value=state.ov[m.key];
+    mi.addEventListener("input",()=>{if(mi.value==="")delete state.ov[m.key];else state.ov[m.key]=mi.value;save();calc()});
+    mb.appendChild(tr);
+  });
+  $("dataInfo").textContent="現在のデータ: "+dataInfo+" / "+members.length+"名";
+}
+
+let lastResult={};
+function calc(){
+  const total=Math.max(0,parseInt($("total").value,10)||0);
+  const cap=Math.max(0,parseInt($("cap").value,10)||0);
+  state.total=total;state.cap=cap;state.sub=$("sub").checked;save();
+  const subN=members.filter(m=>m.sub).length;
+  $("subcnt").textContent="サブ "+subN+"名";
+
+  const elig=m=>!state.off[m.key]&&(state.sub||!m.sub);
+  const ovOf=m=>{const v=state.ov[m.key];return(v!==undefined&&v!==""&&!isNaN(parseInt(v,10)))?Math.max(0,parseInt(v,10)):null};
+  const rs=ranks();
+  const cnt={},ovCnt={},ovSum={};rs.forEach(r=>{cnt[r]=0;ovCnt[r]=0;ovSum[r]=0});
+  let ovTotal=0,ovOver=false;
+  members.forEach(m=>{
+    if(!elig(m))return;
+    const o=ovOf(m);
+    if(o===null)cnt[m.rank]++;
+    else{ovCnt[m.rank]++;ovSum[m.rank]+=o;ovTotal+=o;if(cap>0&&o>cap)ovOver=true}
+  });
+
+  const spec={};
+  rs.forEach(r=>{const v=state.spec[r];if(v!==undefined&&v!==""&&!isNaN(parseInt(v,10)))spec[r]=Math.max(0,parseInt(v,10))});
+  let spent=ovTotal,autoPeople=0;
+  rs.forEach(r=>{if(r in spec)spent+=spec[r]*cnt[r];else autoPeople+=cnt[r]});
+  const remain=total-spent;
+  let autoPer=0;
+  if(remain>0&&autoPeople>0)autoPer=Math.floor(remain/autoPeople);
+  if(cap>0)autoPer=Math.min(autoPer,cap);
+
+  const per={};let used=0;
+  rs.forEach(r=>{per[r]=(r in spec)?spec[r]:autoPer;used+=per[r]*cnt[r]+ovSum[r]});
+
+  document.querySelectorAll("#rankTbl tbody tr").forEach(tr=>{
+    const r=tr.dataset.rank;
+    tr.querySelector(".cnt").textContent=(cnt[r]+ovCnt[r])+"名"+(ovCnt[r]?"（個別"+ovCnt[r]+"）":"");
+    const isAuto=!(r in spec);
+    const pc=tr.querySelector(".per");
+    pc.innerHTML="";pc.append(per[r]+"個");
+    if(isAuto&&cnt[r]>0){const s=document.createElement("span");s.className="auto";s.textContent="自動";pc.appendChild(s)}
+    tr.querySelector(".subt").textContent=(per[r]*cnt[r]+ovSum[r])+"個";
+  });
+  lastResult={};let people=0;
+  document.querySelectorAll("#memTbl tbody tr").forEach(tr=>{
+    const m=members.find(x=>x.key===tr.dataset.key);
+    const on=elig(m);
+    const o=ovOf(m);
+    tr.classList.toggle("off",!on);
+    const v=on?(o!==null?o:per[m.rank]):0;
+    if(v>0)people++;
+    const mi=tr.querySelector(".mi");
+    mi.placeholder=on?String(per[m.rank]):"—";
+    lastResult[m.key]={m,on,v};
+  });
+
+  $("sUsed").textContent=used;
+  $("sLeft").textContent=total-used;
+  $("sPeople").textContent=people;
+
+  const msgs=[];
+  if(remain<0)msgs.push(["e","指定・個別固定の合計が配布可能数を "+(-remain)+" 個超えています。自動の階級には配られません。"]);
+  if(remain>=0&&autoPeople===0&&(rs.some(r=>r in spec)||ovTotal>0)&&total-used>0)msgs.push(["w","自動で割る対象がいないため "+(total-used)+" 個が余ります。"]);
+  if(remain>0&&autoPeople>0&&autoPer===0)msgs.push(["w","残り "+remain+" 個では自動階級の全員に1個ずつ配れません（対象 "+autoPeople+"名）。"]);
+  if(cap>0&&(ovOver||rs.some(r=>(r in spec)&&spec[r]>cap)))msgs.push(["w","一人当たり上限("+cap+")を超える指定があります（指定が優先されます）。"]);
+  if(cap>0&&remain>0&&autoPeople>0&&Math.floor(remain/autoPeople)>cap)msgs.push(["w","上限によって自動階級の配布が抑えられ、余りが出ています。"]);
+  $("msgs").innerHTML="";
+  msgs.forEach(([c,t])=>{const d=document.createElement("div");d.className="msg "+c;d.textContent=t;$("msgs").appendChild(d)});
+  $("copyMsg").textContent="";
+}
+
+function resultText(){
+  const rs=ranks();
+  let t="【報酬配布結果】 配布可能数 "+$("total").value+" / 合計 "+$("sUsed").textContent+" / 余り "+$("sLeft").textContent+"\n";
+  rs.forEach(r=>{
+    const tr=document.querySelector(`#rankTbl tr[data-rank="${CSS.escape(r)}"]`);
+    t+=r+": "+tr.querySelector(".per").firstChild.textContent+"/人 ("+tr.querySelector(".cnt").textContent+")\n";
+  });
+  t+="\n";
+  rs.forEach(r=>{
+    const g=Object.values(lastResult).filter(x=>x.m.rank===r&&x.on&&x.v>0);
+    if(g.length){t+="■"+r+"\n"+g.map(x=>x.m.name+" … "+x.v).join("\n")+"\n"}
+  });
+  return t;
+}
+
+function tsvText(){
+  return "階級\t名前\t備考\t配布数\n"+members.map(m=>{const x=lastResult[m.key];return m.rank+"\t"+m.name+"\t"+m.note+"\t"+(x&&x.on?x.v:0)}).join("\n");
+}
+async function doCopy(t){
+  try{await navigator.clipboard.writeText(t);$("copyMsg").textContent="コピーしました"}
+  catch(e){
+    const ta=document.createElement("textarea");ta.value=t;document.body.appendChild(ta);ta.select();
+    try{document.execCommand("copy");$("copyMsg").textContent="コピーしました"}catch(e2){$("copyMsg").textContent="コピーできませんでした"}
+    ta.remove();
+  }
+}
+$("total").addEventListener("input",calc);
+$("cap").addEventListener("input",calc);
+$("sub").addEventListener("change",calc);
+$("copy").addEventListener("click",()=>doCopy(resultText()));
+$("copyTsv").addEventListener("click",()=>doCopy(tsvText()));
+$("apply").addEventListener("click",()=>{
+  const txt=$("paste").value.replace(/\r/g,"");
+  const lines=txt.split("\n").filter(l=>l.trim());
+  const list=parseLines(lines,"\t");
+  if(!list.length){$("dataMsg").textContent="読み取れる行がありません（タブ区切りで貼り付けてください）";return}
+  setMembers(list);
+  const d=new Date();
+  dataInfo="貼り付けデータ（"+d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")+" 更新）";
+  LS.set("rd_data",JSON.stringify({list:members.map(({rank,name,note,sub})=>({rank,name,note,sub})),info:dataInfo}));
+  state.off={};state.ov={};save();
+  build();calc();$("paste").value="";$("dataMsg").textContent=list.length+"名を読み込みました";
+});
+$("reset").addEventListener("click",()=>{
+  try{localStorage.removeItem("rd_data")}catch(e){}
+  setMembers(parseLines(SNAPSHOT.split("\n"),"|"));
+  dataInfo="初期データ（"+SNAPSHOT_DATE+" 時点）";
+  state.off={};state.ov={};save();build();calc();$("dataMsg").textContent="初期データに戻しました";
+});
+
+loadState();
+$("total").value=state.total;$("cap").value=state.cap;$("sub").checked=!!state.sub;
+build();calc();
+</script>
+</body>
+</html>
